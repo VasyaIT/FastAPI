@@ -1,19 +1,33 @@
-from typing import Annotated
+from fastapi import FastAPI
 
-from fastapi import Body, FastAPI
-from pydantic import BaseModel
+from src.auth.schemas import UserCreate, UserRead, UserUpdate
+from src.auth.routers import fastapi_users
+from src.auth.authentication import auth_backend
+
 
 app = FastAPI()
 
 
-class Item(BaseModel):
-    name: str
-    description: str | None = None
-    price: float
-    tax: float | None = None
-
-
-@app.get("/items/{item_id}")
-async def update_item(item_id: int, item: Annotated[Item, Body(embed=True)]):
-    results = {"item_id": item_id, "item": item}
-    return results
+app.include_router(
+    fastapi_users.get_auth_router(auth_backend), prefix="/auth/jwt", tags=["auth"]
+)
+app.include_router(
+    fastapi_users.get_register_router(UserRead, UserCreate),
+    prefix="/auth",
+    tags=["auth"],
+)
+app.include_router(
+    fastapi_users.get_reset_password_router(),
+    prefix="/auth",
+    tags=["auth"],
+)
+app.include_router(
+    fastapi_users.get_verify_router(UserRead),
+    prefix="/auth",
+    tags=["auth"],
+)
+app.include_router(
+    fastapi_users.get_users_router(UserRead, UserUpdate),
+    prefix="/users",
+    tags=["users"],
+)

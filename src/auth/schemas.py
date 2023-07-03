@@ -1,5 +1,5 @@
 from fastapi_users.schemas import CreateUpdateDictModel
-from pydantic import EmailStr
+from pydantic import EmailStr, BaseModel
 
 
 class BaseUser(CreateUpdateDictModel):

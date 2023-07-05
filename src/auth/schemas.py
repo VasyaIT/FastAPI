@@ -10,7 +10,7 @@ class BaseUser(CreateUpdateDictModel):
         orm_mode = True
 
 
-class UserRead(CreateUpdateDictModel):
+class UserReadUpdate(CreateUpdateDictModel):
     username: str
 
     class Config:
@@ -21,8 +21,7 @@ class UserCreate(BaseUser):
     password: str
 
 
-class UserUpdate(CreateUpdateDictModel):
-    password: str
-
-    class Config:
-        orm_mode = True
+class UserPasswordChange(BaseModel):
+    old_password: str
+    new_password: str
+    new_password_confirm: str

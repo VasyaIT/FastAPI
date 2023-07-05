@@ -1,31 +1,18 @@
-import jwt
-from fastapi_users.jwt import decode_jwt
-from starlette.requests import Request
+import smtplib
+from email.message import EmailMessage
 
-from .services import get_object_by_id
-from src.auth.models import User
-from .config import SECRET_KEY, COOKIE_NAME
+from pydantic import EmailStr
+
+from src import config
 
 
-async def is_authenticate(request: Request) -> User | bool:
-    """
-    Checks the user by the JWT token and returns the user object if the token is valid
-    Otherwise returns False
-    """
-    token = request.cookies.get(COOKIE_NAME)
+def send_mail(subject: str, body: str, email: EmailStr) -> None:
+    message = EmailMessage()
+    message['Subject'] = subject
+    message['From'] = config.MAIL_FROM
+    message['To'] = email
+    message.set_content(body)
 
-    if token:
-        try:
-            data = decode_jwt(token, SECRET_KEY, ['jwt'])
-        except jwt.PyJWTError:
-            return False
-
-        try:
-            user_id = data["sub"]
-        except KeyError:
-            raise False
-
-        user = await get_object_by_id(User, user_id)
-
-        return user if user else False
-    return False
+    with smtplib.SMTP_SSL(config.MAIL_SERVER, config.MAIL_PORT) as smtp:
+        smtp.login(config.MAIL_FROM, config.MAIL_PASSWORD)
+        smtp.send_message(message)

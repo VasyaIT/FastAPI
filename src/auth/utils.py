@@ -1,23 +1,35 @@
-from fastapi_users.jwt import generate_jwt
+from typing import Tuple
+
+from fastapi import HTTPException
+from fastapi_users.exceptions import InvalidVerifyToken
+from fastapi_users.jwt import generate_jwt, decode_jwt
+from jwt import PyJWTError
 from pydantic import EmailStr
-from starlette.requests import Request
-
-from src.config import VERIFICATION_TOKEN_AUDIENCE
-from src.config import VERIFICATION_TOKEN, VERIFICATION_TOKEN_LIFETIME
-from src.tasks.tasks import register_email_verify
+from starlette.status import HTTP_404_NOT_FOUND
 
 
-async def generate_token(username: str, email: EmailStr) -> str:
+def generate_token(
+        sub: str, email: EmailStr, aud: str, secret: str, token_lifetime: int
+) -> str:
     token_data = {
-        "sub": username,
+        "sub": sub,
         "email": email,
-        "aud": VERIFICATION_TOKEN_AUDIENCE,
+        "aud": aud,
     }
-    token = generate_jwt(
-        token_data,
-        VERIFICATION_TOKEN,
-        VERIFICATION_TOKEN_LIFETIME,
-    )
+    token = generate_jwt(token_data, secret, token_lifetime, )
     return token
 
-    # return await send_in_background([email], request, token)
+
+def decode_token(token: str, secret: str, aud: str) -> Tuple[str, EmailStr]:
+    try:
+        data = decode_jwt(token, secret, [aud])
+    except PyJWTError:
+        raise HTTPException(HTTP_404_NOT_FOUND)
+
+    try:
+        sub = data["sub"]
+        email = data["email"]
+    except KeyError:
+        raise InvalidVerifyToken()
+
+    return sub, email

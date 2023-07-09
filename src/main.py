@@ -1,53 +1,47 @@
 from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy import select
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
+# from debug_toolbar.middleware import DebugToolbarMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, RedirectResponse
 
+from src.bots.routers import bot_router
+from src.bots.models import Bot
+from src.bots.schema import BotRead
 from .services import get_object_by_id
-from src.auth.routers import get_user_or_401
-from .config import SECRET_KEY, CORS_ORIGIN
+from .config import SECRET_KEY, CORS_ORIGIN, ALLOW_METHODS, ALLOW_HEADERS
 from src.auth.models import User
 from .database import async_session_maker
 from src.auth.schemas import UserCreate, UserReadUpdate
-from src.auth.routers import fastapi_users
+from src.auth.routers import fastapi_users, auth_router, user_router, get_user_or_401
 from src.auth.authentication import auth_backend
-from src.auth.routers import auth_router, user_router
 
 
-app = FastAPI()
+app = FastAPI()  # debug=True
 
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, max_age=5 * 60)
+# app.add_middleware(
+#     DebugToolbarMiddleware,
+#     panels=["debug_toolbar.panels.sqlalchemy.SQLAlchemyPanel"],
+# )
+
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, max_age=5 * 10)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGIN,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS", "DELETE", "PATCH", "PUT"],
-    allow_headers=["Content-Type", "Set-Cookie", "Access-Control-Allow-Headers",
-                   "Access-Control-Allow-Origin", "Authorization"],
+    allow_methods=ALLOW_METHODS,
+    allow_headers=ALLOW_HEADERS,
 )
 
 app.include_router(fastapi_users.get_auth_router(auth_backend), prefix="/auth/jwt", tags=["auth"])
+app.include_router(fastapi_users.get_reset_password_router(), prefix="/auth", tags=["auth"])
 app.include_router(auth_router)
 app.include_router(user_router)
-app.include_router(fastapi_users.get_reset_password_router(), prefix="/auth", tags=["auth"])
+app.include_router(bot_router)
 
 
 @app.get('/')
-async def foo():
+async def main():
     pass
-
-
-@app.middleware("http")
-async def db_session_middleware(request: Request, call_next):
-    try:
-        async with async_session_maker() as session:
-            request.state.db = session
-        response = await call_next(request)
-    # except Exception as e:
-    #     print(repr(e))
-    #     response = Response("Internal server error", status_code=500)
-    finally:
-        await request.state.db.close()
-    return response

@@ -1,10 +1,8 @@
-from typing import Callable, Any
-
 from fastapi import HTTPException
 from starlette.status import HTTP_400_BAD_REQUEST
 
 from src.auth.models import User
-from .services import get_user_by_username
+from .services import get_object_by_username
 
 
 def auth_form_exception(field: str, message: str) -> HTTPException:
@@ -29,7 +27,7 @@ async def validate_username(username: str) -> None:
     if '@' in username:
         auth_form_exception('username', 'username must not contain @')
 
-    if await get_user_by_username(username):
+    if await get_object_by_username(User, username):
         auth_form_exception('username', 'user with this username already exists')
 
 

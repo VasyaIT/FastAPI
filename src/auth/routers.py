@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict, Callable
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi_users import FastAPIUsers
@@ -6,8 +6,9 @@ from fastapi_users.exceptions import UserAlreadyExists, InvalidVerifyToken
 from starlette.background import BackgroundTasks
 from starlette.requests import Request
 from starlette import status
+from starlette.responses import RedirectResponse
 
-from src.services import get_user_by_username, update_user_username, get_objects
+from src.services import update_user, get_objects, get_object_by_username
 from src.validators import auth_form_exception
 from .authentication import auth_backend
 from .manager import get_user_manager
@@ -36,7 +37,7 @@ async def register(
         user: User = Depends(get_user_or_none)
 ):
     if user:
-        return {'redirect': 'user is authenticated'}
+        return RedirectResponse('/', 303)
     try:
         return await user_manager.create(
             user_create, request=request, background_tasks=background_tasks
@@ -45,17 +46,20 @@ async def register(
         raise auth_form_exception('username', 'user with this username already exists')
 
 
-@auth_router.get('/register/{token}', status_code=status.HTTP_202_ACCEPTED, name='register:verify')
+@auth_router.get(
+    '/register/{token}',
+    status_code=status.HTTP_202_ACCEPTED,
+    name='register:verify',
+)
 async def verified(
         token: str,
         request: Request,
         user_manager=Depends(get_user_manager)
-) -> UserReadUpdate:
+):
     try:
-        user = await user_manager.email_verified(token, request)
+        return await user_manager.email_verified(token, request)
     except InvalidVerifyToken:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, 'token is invalid')
-    return user
 
 
 @auth_router.post('/change_password')
@@ -73,12 +77,9 @@ async def user_me(user: User = Depends(get_user_or_401)):
 
 
 @user_router.patch('/me/update', name='user:update')
-async def user_me_update(new_username: str, user: User = Depends(get_user_or_401)):
-    updated_user = await update_user_username(user.username, new_username)
-
-    if not updated_user:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST)
-    return {'username': updated_user}
+async def user_me_update(data: UserReadUpdate, user: User = Depends(get_user_or_401)):
+    await update_user(user.id, data.dict())
+    return {'success': 'account updated successfully'}
 
 
 @user_router.get(
@@ -92,7 +93,8 @@ async def user_list():
 
 @user_router.get('/user/{username}', name='user:user', response_model=UserReadUpdate)
 async def user_account(username: str):
-    user = await get_user_by_username(username)
+    user = await get_object_by_username(User, username)
+
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     return user

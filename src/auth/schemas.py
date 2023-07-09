@@ -1,5 +1,9 @@
+from typing import List
+
 from fastapi_users.schemas import CreateUpdateDictModel
 from pydantic import EmailStr, BaseModel
+
+from src.bots.schema import BotRead
 
 
 class BaseUser(CreateUpdateDictModel):
@@ -10,8 +14,9 @@ class BaseUser(CreateUpdateDictModel):
         orm_mode = True
 
 
-class UserReadUpdate(CreateUpdateDictModel):
+class UserReadUpdate(BaseModel):
     username: str
+    bots: List[BotRead] = []
 
     class Config:
         orm_mode = True

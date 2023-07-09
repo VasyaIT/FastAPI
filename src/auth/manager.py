@@ -1,21 +1,25 @@
-from typing import Optional, Union
+from typing import Optional, Union, Dict
 
+from dns.message import make_response
 from fastapi import Depends, Request, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi_users import BaseUserManager, IntegerIDMixin, schemas, models, \
     InvalidPasswordException, exceptions
+from fastapi_users.authentication import AuthenticationBackend, Strategy
 from fastapi_users.jwt import decode_jwt
 from jwt import PyJWTError
+from sqlalchemy.exc import IntegrityError
 from starlette.background import BackgroundTasks
+from starlette.responses import RedirectResponse
+from starlette.status import HTTP_404_NOT_FOUND
 
-from src.services import get_user_by_username
+from src.services import get_object_by_username
 from src.database import get_user_db
-from src import config
-from src import validators
+from src import config, validators
 from src.tasks.tasks import register_email_verify
 from .models import User
 from .schemas import UserPasswordChange
-from .utils import generate_token
+from .utils import generate_token, decode_token
 
 
 class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
@@ -38,7 +42,7 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
         user_create: schemas.UC,
         background_tasks: BackgroundTasks,
         request: Optional[Request] = None,
-    ):
+    ) -> Dict[str, str]:
 
         await self.validate_password(user_create.password, user_create)
 
@@ -49,7 +53,14 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
 
         request.session["hashed_password"] = self.password_helper.hash(user_create.password)
 
-        token = await generate_token(user_create.username, user_create.email)
+        token = generate_token(
+            user_create.username,
+            user_create.email,
+            config.VERIFICATION_TOKEN_AUDIENCE,
+            config.VERIFICATION_TOKEN,
+            config.VERIFICATION_TOKEN_LIFETIME
+        )
+
         background_tasks.add_task(register_email_verify, user_create.email, request, token)
 
         return {'success': 'verify email sent'}
@@ -61,7 +72,7 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
         try:
             user = await self.get_by_email(credentials.username)
         except exceptions.UserNotExists:
-            user = await get_user_by_username(credentials.username)
+            user = await get_object_by_username(User, credentials.username)
             if user is None:
                 self.password_helper.hash(credentials.password)
                 return
@@ -76,31 +87,42 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
 
             return user
 
-    async def email_verified(self, token: str, request: Optional[Request] = None) -> models.UP:
-        try:
-            data = decode_jwt(
-                token,
-                self.verification_token_secret,
-                [self.verification_token_audience],
-            )
-        except PyJWTError:
-            raise HTTPException(404)
-
-        try:
-            username = data["sub"]
-            email = data["email"]
-        except KeyError:
-            raise exceptions.InvalidVerifyToken()
+    async def email_verified(
+            self, token: str, request: Optional[Request] = None
+    ) -> RedirectResponse:
+        username, email = decode_token(
+            token,
+            config.VERIFICATION_TOKEN,
+            config.VERIFICATION_TOKEN_AUDIENCE,
+        )
 
         user_dict = dict()
         user_dict['username'] = username
         user_dict['email'] = email
-        if request.session.get('hashed_password'):
-            user_dict['hashed_password'] = request.session['hashed_password']
-        created_user = await self.user_db.create(user_dict)
+
+        session_password = request.session['hashed_password']
+        if not session_password:
+            raise exceptions.InvalidVerifyToken()
+
+        user_dict['hashed_password'] = session_password
         del request.session['hashed_password']
 
-        return created_user
+        try:
+            created_user = await self.user_db.create(user_dict)
+        except IntegrityError:
+            validators.auth_form_exception('username', 'user with this username already exists')
+
+        token = generate_token(
+            created_user.id,
+            created_user.email,
+            config.TOKEN_AUDIENCE,
+            config.SECRET_KEY,
+            config.JWT_LIFETIME
+        )
+
+        response = RedirectResponse('/')
+        response.set_cookie('JWT', token, config.JWT_LIFETIME)
+        return response
 
     async def on_after_forgot_password(
         self, user: User, token: str, request: Optional[Request] = None
@@ -108,7 +130,7 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
         register_email_verify(user.email, request, token)
         return {'success': 'reset password email sent'}
 
-    async def check_password(self, data: UserPasswordChange, user: User):
+    async def check_password(self, data: UserPasswordChange, user: User) -> Dict[str, str]:
         is_math_old_password, _ = self.password_helper.verify_and_update(
             data.old_password, user.hashed_password
         )

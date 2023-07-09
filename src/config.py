@@ -25,11 +25,14 @@ RESET_PASSWORD_TOKEN = environ.get('RESET_PASSWORD_TOKEN')
 RESET_PASSWORD_TOKEN_LIFETIME = 5 * 60
 RESET_PASSWORD_TOKEN_AUDIENCE = environ.get('RESET_PASSWORD_TOKEN_AUDIENCE')
 
-
 # SMTP
 MAIL_PASSWORD = environ.get('MAIL_PASSWORD')
 MAIL_FROM = environ.get('MAIL_FROM')
 MAIL_PORT = environ.get('MAIL_PORT')
 MAIL_SERVER = environ.get('MAIL_SERVER')
 
+# CORS
 CORS_ORIGIN = environ.get('CORS_ORIGIN').split(' ')
+ALLOW_METHODS = ["GET", "POST", "OPTIONS", "DELETE", "PATCH", "PUT"]
+ALLOW_HEADERS = ["Content-Type", "Set-Cookie", "Access-Control-Allow-Headers",
+                 "Access-Control-Allow-Origin", "Authorization"]

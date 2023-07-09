@@ -8,6 +8,10 @@ from alembic import context
 from src.database import DATABASE_URL
 from src.base_models import Base
 
+# This import is mandatory, although it is not used, but nothing works without it.
+# It's fucking magic
+from src.bots.models import Bot
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
